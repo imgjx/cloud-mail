@@ -145,11 +145,11 @@
                   <el-select
                       @change="change"
                       :style="`width: ${ locale === 'en' ? 100 : 80 }px;`"
-                      v-model="setting.autoRefreshTime"
+                      v-model="setting.autoRefresh"
                       placeholder="Select"
                   >
                     <el-option
-                        v-for="item in options"
+                        v-for="item in authRefreshOptions"
                         :key="item.value"
                         :label="item.label"
                         :value="item.value"
@@ -197,7 +197,12 @@
             <div class="card-title">{{ $t('oss') }}</div>
             <div class="card-content">
               <div class="r2domain-item">
-                <div><span>{{ $t('osDomain') }}</span></div>
+                <div>
+                  <span>{{ $t('osDomain') }}</span>
+                  <el-tooltip effect="dark" :content="$t('ossDomainDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
                 <div class="r2domain">
                   <span>{{ setting.r2Domain || '' }}</span>
                   <el-button class="opt-button" size="small" type="primary" @click="r2DomainShow = true">
@@ -208,9 +213,6 @@
               <div class="setting-item">
                 <div>
                   <span>{{ $t('s3Configuration') }}</span>
-                  <el-tooltip effect="dark" :content="$t('s3Desc')">
-                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
-                  </el-tooltip>
                 </div>
                 <div class="r2domain">
                   <el-button class="opt-button" size="small" type="primary" @click="addS3Show = true">
@@ -220,14 +222,12 @@
               </div>
               <div class="setting-item">
                 <div>
-                  <span>{{ $t('kvStorage') }}</span>
-                  <el-tooltip effect="dark" :content="$t('kvStorageDesc')">
-                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
-                  </el-tooltip>
+                  <span>{{ $t('storageType') }}</span>
                 </div>
                 <div class="r2domain">
-                  <el-switch @change="change" :before-change="beforeChange" :active-value="0" :inactive-value="1"
-                             v-model="setting.kvStorage"/>
+                  <div class="storage-type">
+                    <el-tag>{{ setting.storageType }}</el-tag>
+                  </div>
                 </div>
               </div>
             </div>
@@ -713,15 +713,20 @@
           </div>
         </form>
       </el-dialog>
-      <el-dialog v-model="emailPrefixShow" :title="t('emailPrefix')" width="30"  >
+      <el-dialog v-model="emailPrefixShow" :title="t('emailPrefix')"  @closed="resetEmailPrefix"  >
         <div class="email-prefix">
           <div>{{ t('atLeast') }}</div>
-          <el-input-number v-model="minEmailPrefix" :min="1" :max="20" @change="EmailPrefixChange" style="width: 150px" >
+          <el-input-number v-model="minEmailPrefix" :min="1" :max="20" style="width: 150px" >
             <template #suffix>
               <span>{{ t('character') }}</span>
             </template>
           </el-input-number>
         </div>
+        <div class="prefix-filter">
+          <div style="margin-bottom: 10px;">{{ t('mustNotContain') }}</div>
+          <el-input-tag style="margin-bottom: 10px;" v-model="emailPrefixFilter" :placeholder="t('mustNotContainDesc')"  />
+        </div>
+        <el-button type="primary" style="width: 100%;" :loading="settingLoading" @click="saveEmailPrefix">{{ $t('save') }}</el-button>
       </el-dialog>
     </el-scrollbar>
   </div>
@@ -749,7 +754,7 @@ defineOptions({
   name: 'sys-setting'
 })
 
-const currentVersion = 'v2.4.0'
+const currentVersion = 'v2.9.0'
 const hasUpdate = ref(false)
 let getUpdateErrorCount = 1;
 const {t, locale} = useI18n();
@@ -777,6 +782,7 @@ const clearS3Loading = ref(false)
 const r2DomainInput = ref('')
 const loginOpacity = ref(0)
 const minEmailPrefix = ref(0)
+const emailPrefixFilter = ref([])
 const backgroundUrl = ref('')
 let backgroundFile = {}
 const showSetBackground = ref(false)
@@ -821,14 +827,13 @@ const regKeyOptions = computed(() => [
   {label: t('optional'), value: 2},
 ])
 
-const options = computed(() => [
+const authRefreshOptions = computed(() => [
   {label: t('disable'), value: 0},
   {label: '3s', value: 3},
   {label: '5s', value: 5},
-  {label: '7s', value: 7},
   {label: '10s', value: 10},
   {label: '15s', value: 15},
-  {label: '20s', value: 20}
+  {label: '20s', value: 20},
 ])
 
 const tgChatId = ref([])
@@ -868,6 +873,7 @@ function getSettings() {
     regVerifyCount.value = setting.value.regVerifyCount
     resetNoticeForm()
     resetAddS3Form()
+    resetEmailPrefix()
   })
 }
 
@@ -1137,16 +1143,17 @@ function doOpacityChange() {
   editSetting(form, true)
 }
 
-function doEmailPrefix() {
-  const form = {}
-  form.minEmailPrefix = minEmailPrefix.value
-  editSetting(form, true)
+function resetEmailPrefix() {
+  minEmailPrefix.value = setting.value.minEmailPrefix
+  emailPrefixFilter.value = setting.value.emailPrefixFilter
 }
 
-const EmailPrefixChange = debounce(doEmailPrefix, 1000, {
-  leading: false,
-  trailing: true
-})
+function saveEmailPrefix() {
+  const form = {}
+  form.minEmailPrefix = minEmailPrefix.value
+  form.emailPrefixFilter = emailPrefixFilter.value
+  editSetting(form, true)
+}
 
 const opacityChange = debounce(doOpacityChange, 1000, {
   leading: false,
@@ -1298,7 +1305,7 @@ function editSetting(settingForm, refreshStatus = true) {
       plain: true
     })
     if (setting.value.manyEmail === 1) {
-      accountStore.currentAccountId = userStore.user.accountId;
+      accountStore.currentAccountId = userStore.user.account.accountId;
     }
     if (refreshStatus) {
       getSettings()
@@ -1314,9 +1321,9 @@ function editSetting(settingForm, refreshStatus = true) {
     regVerifyCountShow.value = false
     noticePopupShow.value = false
     addS3Show.value = false
+    emailPrefixShow.value = false
   }).catch((e) => {
     loginOpacity.value = setting.value.loginOpacity
-    minEmailPrefix.value = setting.value.minEmailPrefix
     setting.value = {...setting.value, ...JSON.parse(backup)}
   }).finally(() => {
     settingLoading.value = false
@@ -1675,6 +1682,11 @@ function editSetting(settingForm, refreshStatus = true) {
   justify-content: space-between;
 }
 
+.prefix-filter {
+  display: flex;
+  flex-direction: column;
+}
+
 .s3-button {
   display: grid;
   grid-template-columns: 80px 1fr;
@@ -1689,6 +1701,10 @@ function editSetting(settingForm, refreshStatus = true) {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
+
+  .storage-type {
+    margin-right: 3px;
+  }
 
   span {
     overflow: hidden;

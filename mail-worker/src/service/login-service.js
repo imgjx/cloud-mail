@@ -26,7 +26,7 @@ const loginService = {
 
 		const { email, password, token, code } = params;
 
-		let {regKey, register, registerVerify, regVerifyCount, minEmailPrefix} = await settingService.query(c)
+		let { regKey, register, registerVerify, regVerifyCount, minEmailPrefix, emailPrefixFilter } = await settingService.query(c)
 
 		if (oauth) {
 			registerVerify = settingConst.registerVerify.CLOSE;
@@ -43,6 +43,10 @@ const loginService = {
 
 		if (emailUtils.getName(email).length < minEmailPrefix) {
 			throw new BizError(t('minEmailPrefix', { msg: minEmailPrefix } ));
+		}
+
+		if (emailPrefixFilter.some(content => emailUtils.getName(email).includes(content)))  {
+			throw new BizError(t('banEmailPrefix'));
 		}
 
 		if (emailUtils.getName(email).length > 64) {
@@ -226,7 +230,7 @@ const loginService = {
 
 		let authInfo = await c.env.kv.get(KvConst.AUTH_INFO + userRow.userId, { type: 'json' });
 
-		if (authInfo) {
+		if (authInfo && (authInfo.user.email === userRow.email)) {
 
 			if (authInfo.tokens.length > 10) {
 				authInfo.tokens.shift();
